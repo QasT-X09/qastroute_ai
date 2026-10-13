@@ -4,6 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com)
 [![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-success.svg)]()
+![Qastroute Savings Badge](http://localhost:8000/api/badge/savings.svg)
 
 > **Cut your enterprise LLM bills by 70–80% with zero code changes.**  
 > Drop-in replacement for OpenAI and Anthropic SDKs. Single unified API gateway for **Claude Opus 5.5, Claude Fable 5.1, GPT-6 Astra, GPT-5.6 Sol, Kimi K3, and DeepSeek R1/V3**.
@@ -35,9 +36,11 @@ Qastroute AI sits between your application and AI providers. It analyzes prompt 
   * Mega documents (>40k chars) → Routed to Kimi K3 ($1.50/1M tokens)
   * Deep mathematical proofs / architecture → Routed to Claude Opus 5.5 / Fable 5 ($15–$20/1M tokens)
 * **🔄 Dual Protocol Support:** 100% compatible with both OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) SDKs.
-* **🛡️ Zero-Downtime Failover:** Automatically reroutes requests if a provider encounters rate limits (429) or upstream outages (529).
-* **📊 Live Web Dashboard:** Real-time counter of dollars saved, token metrics, and visual testing playground.
-* **🔒 Enterprise Security:** Local heuristic secret detection, secure environment loading, and zero hardcoded credentials.
+* **🛡️ Zero-Downtime Failover Cascade:** Automatically reroutes requests to equivalent backup models if an upstream provider hits rate limits (429) or outages (503).
+* **⚡ Server-Sent Events (SSE) Streaming:** Native `stream: true` token-by-token output compatible with Cursor, Claude Code, and Aider.
+* **🛑 Smart Budget Guard:** Configurable daily spend caps that automatically downshift traffic to free models when limits are hit.
+* **📊 Live Web Dashboard & Badges:** Real-time counter of dollars saved, token metrics, visual testing playground, and dynamic SVG badges for GitHub.
+* **🔒 Enterprise Security Hardening:** Sliding-window rate limiter per IP, payload size guards, and strict OWASP/CWE compliance.
 
 ---
 

@@ -152,4 +152,53 @@ def test_billing_webhook_order_created():
     assert data["tier"] == "enterprise"
     assert data["user_email"] == "founder@startup.io"
 
+def test_openai_streaming_sse():
+    payload = {
+        "model": "auto",
+        "messages": [{"role": "user", "content": "Write a count from 1 to 5"}],
+        "stream": True
+    }
+    response = client.post("/v1/chat/completions", json=payload)
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    body_text = response.text
+    assert "data: " in body_text
+    assert "data: [DONE]" in body_text
+
+def test_anthropic_streaming_sse():
+    payload = {
+        "model": "claude-fable-5.1",
+        "messages": [{"role": "user", "content": "Hello streaming"}],
+        "stream": True
+    }
+    response = client.post("/v1/messages", json=payload)
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    body_text = response.text
+    assert "event: message_start" in body_text
+    assert "event: content_block_delta" in body_text
+
+def test_savings_badge_svg():
+    response = client.get("/api/badge/savings.svg")
+    assert response.status_code == 200
+    assert "image/svg+xml" in response.headers["content-type"]
+    assert "<svg" in response.text
+    assert "Saved" in response.text
+
+def test_budget_status_endpoint():
+    response = client.get("/api/budget/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "daily_cap_usd" in data
+    assert "current_spend_usd" in data
+    assert "remaining_budget_usd" in data
+    assert "is_over_budget" in data
+
+def test_failover_cascade_mapping():
+    from app.failover import failover_cascade
+    fallbacks = failover_cascade.get_fallbacks("claude-opus-5.5")
+    assert len(fallbacks) > 0
+    assert "gpt-6.1-sol-pro" in fallbacks
+
+
 
