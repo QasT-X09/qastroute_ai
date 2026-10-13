@@ -11,7 +11,7 @@
 ```markdown
 Hey HN!
 
-We built Qastroute AI (https://github.com/YOUR_USERNAME/qastroute_ai) — an open-source, dual-protocol AI gateway and cost optimizer designed for the latest 2026 frontier models (GPT-6.1 Sol Pro, Astra Pro, Claude Opus 5.5, Claude Fable 5.1, Kimi K3, and DeepSeek R1).
+We built Qastroute AI (https://github.com/QasT-X09/qastroute_ai) — an open-source, dual-protocol AI gateway and cost optimizer designed for the latest 2026 frontier models (GPT-6.1 Sol Pro, Astra Pro, Claude Opus 5.5, Claude Fable 5.1, Kimi K3, and DeepSeek R1).
 
 ### Why did we build this?
 Most AI developers face two massive pain points:
@@ -26,7 +26,7 @@ Most AI developers face two massive pain points:
 
 It's completely free and open-source under Apache 2.0. We'd love your feedback, feature requests, and benchmarks!
 
-GitHub: https://github.com/YOUR_USERNAME/qastroute_ai
+GitHub: https://github.com/QasT-X09/qastroute_ai
 Docs & Demo: http://localhost:8000
 ```
 
@@ -48,7 +48,7 @@ So I built **Qastroute AI**:
 - Built-in prompt caching with SHA-256 TTL.
 - Local fallback bridge to FCC / local Ollama / vLLM endpoints.
 
-Repo: https://github.com/YOUR_USERNAME/qastroute_ai
+Repo: https://github.com/QasT-X09/qastroute_ai
 
 Works natively as a drop-in proxy for Cursor, Claude Code, Aider, and any OpenAI/Anthropic client. Let me know what you think!
 ```
@@ -71,7 +71,7 @@ Features:
 Docker run:
 `docker run -p 8000:8000 qastroute/gateway:latest`
 
-Check it out on GitHub: https://github.com/YOUR_USERNAME/qastroute_ai
+Check it out on GitHub: https://github.com/QasT-X09/qastroute_ai
 ```
 
 ---
