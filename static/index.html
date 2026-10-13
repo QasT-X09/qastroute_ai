@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qastroute AI — Enterprise Universal AI Gateway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#050508',
+                        panelbg: '#0c0c12',
+                        cardbg: '#12121c',
+                        borderbg: '#1c1c2a',
+                        brandgreen: '#00e599',
+                        brandpurple: '#7c3aed',
+                        brandcyan: '#06b6d4'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #050508; }
+        code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+        .gradient-text { background: linear-gradient(135deg, #00e599 0%, #7c3aed 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .glow-box { box-shadow: 0 0 50px -12px rgba(0, 229, 153, 0.15); }
+    </style>
+</head>
+<body class="text-gray-100 min-h-screen flex flex-col antialiased selection:bg-brandgreen/20 selection:text-brandgreen">
+
+    <!-- Top Status Banner -->
+    <div class="bg-gradient-to-r from-brandgreen/10 via-brandpurple/10 to-brandcyan/10 border-b border-borderbg py-1.5 px-6 text-center text-xs text-gray-400 flex items-center justify-center space-x-3">
+        <span class="inline-block w-2 h-2 rounded-full bg-brandgreen animate-pulse"></span>
+        <span class="font-mono text-gray-300">GATEWAY OPERATIONAL:</span>
+        <span>GPT-6.1 Sol Pro, Astra Pro, Claude Opus 5.5, Fable 5.1, Kimi K3, DeepSeek R1</span>
+        <span class="text-gray-500">|</span>
+        <span class="text-emerald-400 font-medium">99.99% Upstream SLA</span>
+    </div>
+
+    <!-- Navigation -->
+    <header class="border-b border-borderbg bg-darkbg/90 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brandgreen to-brandpurple flex items-center justify-center font-extrabold text-white text-lg shadow-lg">Q</div>
+                <div class="flex flex-col">
+                    <span class="text-lg font-bold tracking-tight leading-none">Qastroute <span class="gradient-text font-black">AI</span></span>
+                    <span class="text-[10px] text-gray-400 font-mono tracking-widest uppercase mt-0.5">Universal Enterprise Gateway</span>
+                </div>
+            </div>
+
+            <!-- Nav Links & Auth Button -->
+            <div class="flex items-center space-x-6 text-sm">
+                <a href="#console" class="text-gray-300 hover:text-white transition">Live Console</a>
+                <a href="#matrix" class="text-gray-300 hover:text-white transition">Model Matrix</a>
+                <a href="#integration" class="text-gray-300 hover:text-white transition">SDK Docs</a>
+                <a href="/v1/models" target="_blank" class="text-gray-400 hover:text-white transition mono text-xs flex items-center space-x-1">
+                    <span>GET /v1/models</span>
+                    <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                </a>
+
+                <!-- User Account / Sign In Widget -->
+                <button onclick="toggleAuthModal()" class="px-4 py-2 rounded-xl bg-cardbg hover:bg-borderbg border border-borderbg transition flex items-center space-x-2.5 font-medium shadow-sm">
+                    <div class="w-6 h-6 rounded-full bg-gradient-to-tr from-brandpurple to-brandcyan flex items-center justify-center text-xs font-bold text-white">
+                        <i class="fa-solid fa-user text-[11px]"></i>
+                    </div>
+                    <span id="user-display" class="mono text-xs text-gray-200">Account &amp; API Keys</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl mx-auto px-6 py-10 w-full space-y-12">
+
+        <!-- Executive Metrics Row -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-cardbg border border-borderbg rounded-2xl p-6 glow-box">
+                <div class="flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">
+                    <span>Enterprise Savings</span>
+                    <i class="fa-solid fa-chart-line text-brandgreen text-base"></i>
+                </div>
+                <div id="metric-saved" class="text-3xl font-extrabold text-brandgreen mono">$0.00</div>
+                <div class="text-xs text-gray-400 mt-2">Calculated vs. $20/M frontier baseline</div>
+            </div>
+
+            <div class="bg-cardbg border border-borderbg rounded-2xl p-6">
+                <div class="flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">
+                    <span>Total Requests</span>
+                    <i class="fa-solid fa-bolt text-brandpurple text-base"></i>
+                </div>
+                <div id="metric-requests" class="text-3xl font-extrabold text-white mono">0</div>
+                <div class="text-xs text-gray-400 mt-2">Zero-downtime auto-failover</div>
+            </div>
+
+            <div class="bg-cardbg border border-borderbg rounded-2xl p-6">
+                <div class="flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">
+                    <span>Frontier Catalog</span>
+                    <i class="fa-solid fa-server text-brandcyan text-base"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-white mono">17 SOTA Models</div>
+                <div class="text-xs text-gray-400 mt-2">GPT-6.1, Astra, Opus 5.5, Kimi K3</div>
+            </div>
+
+            <div class="bg-cardbg border border-borderbg rounded-2xl p-6">
+                <div class="flex items-center justify-between text-xs text-gray-400 font-mono uppercase tracking-wider mb-2">
+                    <span>Efficiency Ratio</span>
+                    <i class="fa-solid fa-gauge-high text-emerald-400 text-base"></i>
+                </div>
+                <div class="text-3xl font-extrabold text-emerald-400 mono">79.2%</div>
+                <div class="text-xs text-gray-400 mt-2">Avg. Cost Reduction per Transaction</div>
+            </div>
+        </div>
+
+        <!-- Professional Developer Console / Playground -->
+        <section id="console" class="bg-cardbg border border-borderbg rounded-3xl p-8 glow-box">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between pb-6 border-b border-borderbg gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center space-x-2">
+                        <i class="fa-solid fa-terminal text-brandgreen"></i>
+                        <span>Developer Gateway Console</span>
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">Simulate enterprise requests with dual-protocol routing and cost telemetry.</p>
+                </div>
+
+                <div class="flex items-center space-x-3 w-full md:w-auto">
+                    <label class="text-xs font-mono text-gray-400 uppercase">Routing Target:</label>
+                    <select id="model-select" class="bg-darkbg border border-borderbg text-white text-xs mono rounded-xl px-4 py-2.5 focus:outline-none focus:border-brandgreen">
+                        <option value="auto">✨ auto (Smart Semantic Tiering — Recommended)</option>
+                        <optgroup label="── 2026 Ultra-Frontier (OpenAI / Anthropic) ──">
+                            <option value="gpt-6.1-sol-pro">OpenAI GPT-6.1 Sol Pro (Frontier Logic)</option>
+                            <option value="gpt-6-astra-pro">OpenAI GPT-6 Astra Pro (Multimodal Ultra)</option>
+                            <option value="gpt-5.6-sol-pro">OpenAI GPT-5.6 Sol Pro</option>
+                            <option value="claude-opus-5.5">Anthropic Claude Opus 5.5</option>
+                            <option value="claude-fable-5.1">Anthropic Claude Fable 5.1</option>
+                            <option value="claude-sonnet-5.5">Anthropic Claude Sonnet 5.5</option>
+                        </optgroup>
+                        <optgroup label="── Mega-Context Documents (2M+ Tokens) ──">
+                            <option value="kimi-k3">Moonshot Kimi K3 (2M Document Context)</option>
+                            <option value="kimi-k2.7-code">Moonshot Kimi K2.7 Code</option>
+                        </optgroup>
+                        <optgroup label="── High-Efficiency & SOTA Code ──">
+                            <option value="deepseek-r1">DeepSeek R1 (Reasoning Champion)</option>
+                            <option value="deepseek-v3.2">DeepSeek V3.2 Flagship</option>
+                            <option value="codestral-latest">Mistral Codestral (Dedicated Code)</option>
+                            <option value="groq-gpt120b">Groq GPT-OSS-120B (300+ tok/s Ultra-Fast)</option>
+                            <option value="gemini-3.6-flash">Google Gemini 3.6 Flash</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <!-- Left: Payload Editor -->
+                <div class="flex flex-col space-y-4">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-mono text-gray-400 uppercase tracking-wider">Client Request Prompt:</label>
+                        <span class="text-[11px] text-gray-500 mono">Format: OpenAI / Anthropic</span>
+                    </div>
+                    <textarea id="prompt-input" rows="9" class="w-full bg-darkbg border border-borderbg rounded-2xl p-4 text-xs text-white mono focus:outline-none focus:border-brandgreen leading-relaxed" placeholder="Enter production prompt to evaluate routing...
+e.g.:
+1. 'Write an enterprise database transaction wrapper in Python' -> Routes to Codestral ($1.00/M)
+2. 'Perform formal cryptographic analysis of elliptic curve parameters' -> Routes to GPT-6.1 / Claude Opus ($22.00/M)
+3. 'Format list to JSON: id, name, role' -> Routes to Groq 120B / DeepSeek ($0.15/M)"></textarea>
+                    
+                    <button id="btn-send" onclick="sendTestRequest()" class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-brandgreen to-brandpurple hover:opacity-90 font-bold transition flex items-center justify-center space-x-2 text-white shadow-lg">
+                        <i class="fa-solid fa-play text-xs"></i>
+                        <span>Dispatch via Qastroute Gateway</span>
+                    </button>
+                </div>
+
+                <!-- Right: Telemetry & Inspector -->
+                <div class="flex flex-col space-y-4">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-mono text-gray-400 uppercase tracking-wider">Gateway Stream / Inspector:</label>
+                        <span id="routing-badge" class="hidden text-xs px-2.5 py-0.5 rounded-full bg-brandpurple/20 text-purple-300 border border-brandpurple/30 font-mono"></span>
+                    </div>
+                    <div id="output-box" class="w-full bg-darkbg border border-borderbg rounded-2xl p-4 text-xs text-gray-300 mono overflow-y-auto h-[234px] leading-relaxed whitespace-pre-wrap">Awaiting incoming payload...</div>
+                    
+                    <div id="telemetry-bar" class="hidden bg-panelbg border border-borderbg rounded-xl p-3 text-xs text-gray-400 grid grid-cols-4 gap-2 font-mono text-center">
+                        <div>Tier: <span id="telemetry-tier" class="text-brandgreen font-bold"></span></div>
+                        <div>Tokens: <span id="telemetry-tokens" class="text-white font-bold"></span></div>
+                        <div>Status: <span class="text-emerald-400 font-bold">200 OK</span></div>
+                        <div>Cost Saving: <span id="telemetry-savings" class="text-emerald-400 font-bold">~80%</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Model Catalog Matrix -->
+        <section id="matrix" class="bg-cardbg border border-borderbg rounded-3xl p-8">
+            <h2 class="text-xl font-bold mb-2 flex items-center space-x-2">
+                <i class="fa-solid fa-layer-group text-brandpurple"></i>
+                <span>Supported Model Matrix &amp; Pricing Tiers</span>
+            </h2>
+            <p class="text-xs text-gray-400 mb-6">Unified billing across all frontier providers. No separate vendor contracts required.</p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs mono">
+                    <thead class="border-b border-borderbg text-gray-400 uppercase">
+                        <tr>
+                            <th class="py-3 px-4">Model Key</th>
+                            <th class="py-3 px-4">Provider</th>
+                            <th class="py-3 px-4">Capability Tier</th>
+                            <th class="py-3 px-4">Gateway Cost / 1M</th>
+                            <th class="py-3 px-4">Frontier Alternative</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-borderbg/60 text-gray-300">
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">gpt-6.1-sol-pro</td>
+                            <td class="py-3 px-4 text-blue-400">OpenAI</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">Ultra-Frontier Logic</span></td>
+                            <td class="py-3 px-4 text-white">$25.00</td>
+                            <td class="py-3 px-4 text-gray-500">Standalone direct API</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">claude-opus-5.5</td>
+                            <td class="py-3 px-4 text-orange-400">Anthropic</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">Ultra-Frontier Math &amp; Code</span></td>
+                            <td class="py-3 px-4 text-white">$22.00</td>
+                            <td class="py-3 px-4 text-gray-500">Claude Enterprise</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">gpt-6-astra-pro</td>
+                            <td class="py-3 px-4 text-blue-400">OpenAI</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">Multimodal Ultra</span></td>
+                            <td class="py-3 px-4 text-white">$22.00</td>
+                            <td class="py-3 px-4 text-gray-500">Direct Azure / OpenAI</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">claude-fable-5.1</td>
+                            <td class="py-3 px-4 text-orange-400">Anthropic</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">High-Intelligence Flagship</span></td>
+                            <td class="py-3 px-4 text-white">$15.00</td>
+                            <td class="py-3 px-4 text-gray-500">Direct Anthropic</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">kimi-k3</td>
+                            <td class="py-3 px-4 text-cyan-400">Moonshot</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">2M Mega-Context Docs</span></td>
+                            <td class="py-3 px-4 text-brandgreen font-bold">$1.50</td>
+                            <td class="py-3 px-4 text-gray-500">Saves 90% on giant PDFs</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">codestral-latest</td>
+                            <td class="py-3 px-4 text-amber-400">Mistral</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">SOTA Dedicated Code</span></td>
+                            <td class="py-3 px-4 text-brandgreen font-bold">$1.00</td>
+                            <td class="py-3 px-4 text-gray-500">Replaces expensive Copilots</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">deepseek-r1</td>
+                            <td class="py-3 px-4 text-emerald-400">DeepSeek</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Open Reasoning Champion</span></td>
+                            <td class="py-3 px-4 text-brandgreen font-bold">$0.80</td>
+                            <td class="py-3 px-4 text-gray-500">Matches o1 at 5% cost</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 text-white font-semibold">groq-gpt120b</td>
+                            <td class="py-3 px-4 text-emerald-400">Groq LPU</td>
+                            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">300+ tok/s Ultra-Fast</span></td>
+                            <td class="py-3 px-4 text-brandgreen font-bold">$0.15</td>
+                            <td class="py-3 px-4 text-gray-500">Fastest engine in existence</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 1-Minute Enterprise Integration -->
+        <section id="integration" class="bg-cardbg border border-borderbg rounded-3xl p-8">
+            <h2 class="text-xl font-bold mb-2">⚡ Enterprise 1-Line Drop-in Integration</h2>
+            <p class="text-xs text-gray-400 mb-6">Zero application refactoring. Point your base_url to Qastroute.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- OpenAI SDK -->
+                <div class="bg-darkbg border border-borderbg rounded-2xl p-5">
+                    <div class="text-[11px] text-gray-500 mono mb-3 flex items-center justify-between">
+                        <span>Python (OpenAI SDK)</span>
+                        <span class="text-emerald-400">100% Compatible</span>
+                    </div>
+                    <pre class="text-xs text-gray-300 mono overflow-x-auto"><code>import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key=os.environ.get("QASTROUTE_API_KEY")
+)
+
+# Route automatically or specify any 2026 model
+resp = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "Analyze system load"}]
+)
+print(resp.choices[0].message.content)</code></pre>
+                </div>
+
+                <!-- Anthropic SDK -->
+                <div class="bg-darkbg border border-borderbg rounded-2xl p-5">
+                    <div class="text-[11px] text-gray-500 mono mb-3 flex items-center justify-between">
+                        <span>Python (Anthropic SDK)</span>
+                        <span class="text-emerald-400">100% Compatible</span>
+                    </div>
+                    <pre class="text-xs text-gray-300 mono overflow-x-auto"><code>import os
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="http://localhost:8000",
+    api_key=os.environ.get("QASTROUTE_API_KEY")
+)
+
+msg = client.messages.create(
+    model="claude-opus-5.5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Formal proof"}]
+)
+print(msg.content[0].text)</code></pre>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Account / API Key Modal -->
+    <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-panelbg border border-borderbg rounded-3xl max-w-md w-full p-6 space-y-6 glow-box">
+            <div class="flex items-center justify-between border-b border-borderbg pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-lg bg-brandgreen/20 text-brandgreen flex items-center justify-center">
+                        <i class="fa-solid fa-key text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-sm">Developer API Credentials</h3>
+                        <p class="text-[11px] text-gray-400">Manage Gateway Tokens &amp; Quotas</p>
+                    </div>
+                </div>
+                <button onclick="toggleAuthModal()" class="text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Active Key Box -->
+            <div class="space-y-2">
+                <label class="text-xs font-mono text-gray-400 uppercase">Live Gateway Key:</label>
+                <div class="flex items-center space-x-2">
+                    <input id="api-key-input" type="text" readonly value="qast_live_9f83ac027b1248e582d9" class="bg-darkbg border border-borderbg rounded-xl px-3 py-2 text-xs mono text-brandgreen w-full focus:outline-none">
+                    <button onclick="copyApiKey()" class="px-3 py-2 rounded-xl bg-borderbg hover:bg-gray-700 text-xs mono transition flex items-center space-x-1">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Billing & Balance -->
+            <div class="bg-darkbg border border-borderbg rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between text-xs mono">
+                    <span class="text-gray-400">Current Plan:</span>
+                    <span class="text-brandgreen font-bold">Pro Developer ($29/mo)</span>
+                </div>
+                <div class="flex items-center justify-between text-xs mono">
+                    <span class="text-gray-400">Credit Balance:</span>
+                    <span class="text-white font-bold">$100.00 USD</span>
+                </div>
+                <div class="w-full bg-borderbg rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-brandgreen h-1.5 rounded-full" style="width: 22%"></div>
+                </div>
+                <div class="text-[10px] text-gray-500 mono flex justify-between">
+                    <span>22,400 / 100,000 tokens used this cycle</span>
+                    <span>Resets in 18 days</span>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <button onclick="alert('API Key regenerated: qast_live_' + Math.random().toString(36).substring(2, 18)); toggleAuthModal();" class="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold transition">
+                    Regenerate Master Secret Key
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-borderbg py-8 text-center text-xs text-gray-500 mt-auto">
+        <p>© 2026 Qastroute AI Inc. Universal Open Source Gateway Infrastructure.</p>
+    </footer>
+
+    <script>
+        function toggleAuthModal() {
+            const m = document.getElementById('auth-modal');
+            m.classList.toggle('hidden');
+        }
+
+        function copyApiKey() {
+            const input = document.getElementById('api-key-input');
+            input.select();
+            navigator.clipboard.writeText(input.value);
+            alert("API Key copied to clipboard: " + input.value);
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('metric-saved').innerText = '$' + data.estimated_dollars_saved.toFixed(2);
+                document.getElementById('metric-requests').innerText = data.total_requests;
+            } catch(e) {}
+        }
+
+        async function sendTestRequest() {
+            const prompt = document.getElementById('prompt-input').value.trim();
+            if (!prompt) return;
+
+            const model = document.getElementById('model-select').value;
+            const btn = document.getElementById('btn-send');
+            const outputBox = document.getElementById('output-box');
+            const routingBadge = document.getElementById('routing-badge');
+            const telemetryBar = document.getElementById('telemetry-bar');
+
+            btn.disabled = true;
+            btn.textContent = 'Routing & Streaming...';
+            outputBox.innerText = "Analyzing prompt complexity and resolving optimal upstream provider...";
+
+            const startTime = performance.now();
+
+            try {
+                const res = await fetch('/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{role: 'user', content: prompt}]
+                    })
+                });
+
+                const data = await res.json();
+                const latency = Math.round(performance.now() - startTime);
+                const content = data.choices[0].message.content;
+                outputBox.innerText = content;
+
+                const meta = data.qastroute_meta || {};
+                routingBadge.innerText = (meta.auto_routed ? '✨ Auto-Routed → ' : 'Direct → ') + data.model;
+                routingBadge.classList.remove('hidden');
+
+                document.getElementById('telemetry-tier').innerText = (meta.tier || 'balanced').toUpperCase();
+                document.getElementById('telemetry-tokens').innerText = data.usage.total_tokens + ` (${latency}ms)`;
+                telemetryBar.classList.remove('hidden');
+
+                fetchStats();
+            } catch (err) {
+                outputBox.innerText = "Error: " + err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Dispatch via Qastroute Gateway';
+            }
+        }
+
+        fetchStats();
+    </script>
+</body>
+</html>

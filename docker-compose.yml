@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  qastroute:
+    build: .
+    container_name: qastroute-ai-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - QASTROUTE_API_KEY=qast-live-demo-key
+      - FCC_LOCAL_GATEWAY=http://host.docker.internal:8082
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

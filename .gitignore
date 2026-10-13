@@ -1,0 +1,30 @@
+# Environment & Secrets
+.env
+*.env
+*.pem
+*.key
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Local databases & data
+*.db
+*.sqlite3
+data/
