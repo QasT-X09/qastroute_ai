@@ -9,23 +9,23 @@
 [![Failover](https://img.shields.io/badge/Failover-Zero--Downtime-8b5cf6.svg)]()
 
 > **Cut your enterprise LLM bills by 70–80% with zero code changes.**  
-> Drop-in replacement for OpenAI and Anthropic SDKs. Single unified API gateway for **Claude 3.7 Sonnet, GPT-4o, o3-mini, Gemini 2.5 Flash, DeepSeek R1/V3, and Qwen 2.5 Coder**.
+> Drop-in replacement for OpenAI and Anthropic SDKs. Single unified API gateway for **Claude Opus 5.5, Claude Fable 5.1, Claude Sonnet 5.5, GPT-6 Astra, GPT-5.6 Sol, Kimi K3, and DeepSeek R1/V3**.
 
 ---
 
 ## ⚡ The Problem: The 20,000 USD/Month Frontier Model Tax
-Most software engineering teams send **100% of their prompts** to expensive frontier models (costing 15 to 25 USD per 1M tokens) like Claude 3.7 Sonnet or GPT-4o.  
-In reality, **over 70% of production prompts** are simple JSON formatting, classification, basic translations, or boilerplate queries that cost-effective workhorse models (DeepSeek V3, Gemini 2.5 Flash, Groq) solve with identical accuracy at **1/100th of the cost**.
+Most software engineering teams send **100% of their prompts** to expensive frontier models (costing 15 to 25 USD per 1M tokens) like Claude Opus 5.5, Claude Fable 5.1, GPT-6 Astra, or GPT-5.6 Sol.  
+In reality, **over 70% of production prompts** are simple JSON formatting, classification, basic translations, or boilerplate queries that cheaper models (DeepSeek V3, Groq 120B) solve with identical accuracy at **1/100th of the cost**.
 
 ## 💡 The Solution: Qastroute AI
 Qastroute AI sits between your application and AI providers. It analyzes prompt complexity in **1 millisecond** and automatically routes each query to the most cost-effective model.
 
 ```
-                              ┌───► Anthropic (Claude 3.7 Sonnet / Claude 3.5 Sonnet)
-                              ├───► OpenAI (GPT-4o / o3-mini / o1)
-[ Your App / Cursor / IDE ] ──► [ Qastroute AI Gateway ] ├───► Google (Gemini 2.5 Flash / Pro — 1M+ Context)
-                              ├───► DeepSeek (R1 Reasoning / V3)
-                              └───► Mistral & Qwen (Codestral / Qwen 2.5 Coder)
+                              ┌───► Anthropic (Claude Opus 5.5 / Fable 5.1 / Sonnet 5.5)
+                              ├───► OpenAI (GPT-6 Astra / GPT-5.6 Sol / o3)
+[ Your App / Cursor / IDE ] ──► [ Qastroute AI Gateway ] ├───► Moonshot (Kimi K3 - 2M Context)
+                              ├───► DeepSeek (R1 / V3)
+                              └───► Groq / Mistral (Codestral / 120B)
 ```
 
 ---
@@ -33,10 +33,10 @@ Qastroute AI sits between your application and AI providers. It analyzes prompt 
 ## 🌟 Key Features
 
 * **✨ Smart Semantic Auto-Tiering (`model="auto"`):**
-  * Simple formatting / greetings → Routed to ultra-fast DeepSeek V3 / Groq (0.15 to 0.27 USD per 1M tokens)
-  * Coding tasks / refactoring → Routed to Qwen 2.5 Coder & Codestral (0.80 to 1.00 USD per 1M tokens)
-  * Mega documents (>40k chars) → Routed to Gemini 2.5 Flash / Kimi (1M+ context)
-  * Deep mathematical proofs / architecture → Routed to Claude 3.7 Sonnet / o3-mini / o1 (15 to 20 USD per 1M tokens)
+  * Simple formatting / greetings → Routed to ultra-cheap DeepSeek/Groq (0.15 USD per 1M tokens)
+  * Coding tasks / refactoring → Routed to Mistral Codestral (1.00 USD per 1M tokens)
+  * Mega documents (>40k chars) → Routed to Kimi K3 (1.50 USD per 1M tokens)
+  * Deep mathematical proofs / architecture → Routed to Claude Opus 5.5 / Fable 5.1 / GPT-6 Astra (15 to 22 USD per 1M tokens)
 * **🔄 Dual Protocol Support:** 100% compatible with both OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) SDKs.
 * **🛡️ Zero-Downtime Failover Cascade:** Automatically reroutes requests to equivalent backup models if an upstream provider hits rate limits (429) or outages (503).
 * **⚡ Server-Sent Events (SSE) Streaming:** Native `stream: true` token-by-token output compatible with Cursor, Claude Code, and Aider.
@@ -73,7 +73,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="auto",  # Or specify 'claude-3-7-sonnet', 'gpt-4o', 'deepseek-r1'
+    model="auto",  # Or specify 'claude-opus-5.5', 'gpt-6-astra', 'kimi-k3'
     messages=[{"role": "user", "content": "Format this list into JSON: Apple, Banana, Cherry"}]
 )
 
@@ -90,7 +90,7 @@ client = anthropic.Anthropic(
 )
 
 message = client.messages.create(
-    model="claude-3-7-sonnet",
+    model="claude-fable-5.1",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Write a distributed consensus proof"}]
 )
@@ -104,15 +104,13 @@ print(message.content[0].text)
 
 | Model Alias | Provider | Best Used For | Typical Cost / 1M |
 |---|---|---|---|
-| `claude-3-7-sonnet` | Anthropic | Frontier Hybrid Reasoning & Complex Code | ~15.00 USD |
-| `claude-3-5-sonnet` | Anthropic | High-Intelligence Workhorse | ~15.00 USD |
-| `gpt-4o` | OpenAI | Flagship Multimodal Intelligence | ~10.00 USD |
-| `o1` | OpenAI | Advanced Deep Chain-of-Thought Reasoning | ~20.00 USD |
-| `o3-mini` | OpenAI | High-Speed Reasoning Champion | ~4.40 USD |
-| `gemini-2.5-pro` | Google | SOTA Multimodal & Mega-Context Analysis | ~5.00 USD |
-| `gemini-2.5-flash` | Google | Ultra-Fast 1M+ Context Workhorse | ~0.30 USD |
-| `qwen-2.5-coder-32b` | Alibaba / DeepSeek | SOTA Dedicated Code Generation | ~0.80 USD |
-| `codestral-latest` | Mistral | High-Throughput Code Engine | ~1.00 USD |
+| `claude-opus-5.5` | Anthropic | Frontier Mathematical Reasoning & Code | ~20.00 USD |
+| `claude-fable-5.1` | Anthropic | High-Intelligence Architecture | ~15.00 USD |
+| `claude-sonnet-5.5` | Anthropic | Balanced Workhorse & High Speed | ~3.00 USD |
+| `gpt-6-astra` | OpenAI | Flagship Multimodal Analysis | ~18.00 USD |
+| `gpt-5.6-sol` | OpenAI | Deep Chain-of-Thought Reasoning | ~12.00 USD |
+| `codestral-latest` | Mistral | SOTA Dedicated Code Generation | ~1.00 USD |
+| `kimi-k3` | Moonshot | 2M+ Token Mega-Context Documents | ~1.50 USD |
 | `deepseek-r1` | DeepSeek | Open Reasoning Champion | ~0.80 USD |
 | `deepseek-v3` | DeepSeek | High-Performance General Tasks | ~0.27 USD |
 | `groq-gpt120b` | Groq | Ultra-Fast 300+ tok/s Simple Tasks | ~0.15 USD |
