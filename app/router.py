@@ -72,6 +72,62 @@ MODEL_CATALOG = {
         "tier": "balanced",
         "cost_per_m": 3.0
     },
+    "claude-3-7-sonnet": {
+        "provider": "anthropic",
+        "real_id": "anthropic/claude-3-7-sonnet",
+        "description": "Anthropic Claude 3.7 Sonnet (Frontier Hybrid Reasoning & Coding)",
+        "tier": "ultra_frontier",
+        "cost_per_m": 15.0
+    },
+    "claude-3-5-sonnet": {
+        "provider": "anthropic",
+        "real_id": "anthropic/claude-3-5-sonnet-20241022",
+        "description": "Anthropic Claude 3.5 Sonnet (High-Intelligence Workhorse)",
+        "tier": "flagship",
+        "cost_per_m": 15.0
+    },
+    "gpt-4o": {
+        "provider": "openai",
+        "real_id": "openai/gpt-4o",
+        "description": "OpenAI GPT-4o (Flagship Multimodal Intelligence)",
+        "tier": "flagship",
+        "cost_per_m": 10.0
+    },
+    "o1": {
+        "provider": "openai",
+        "real_id": "openai/o1",
+        "description": "OpenAI o1 (Advanced Deep Chain-of-Thought Reasoning)",
+        "tier": "ultra_frontier",
+        "cost_per_m": 20.0
+    },
+    "o3-mini": {
+        "provider": "openai",
+        "real_id": "openai/o3-mini",
+        "description": "OpenAI o3-mini (High-Speed Reasoning Champion)",
+        "tier": "reasoning_cheap",
+        "cost_per_m": 4.4
+    },
+    "gemini-2.5-pro": {
+        "provider": "google",
+        "real_id": "google/gemini-2.5-pro",
+        "description": "Google Gemini 2.5 Pro (Frontier Multimodal & Mega Context)",
+        "tier": "flagship",
+        "cost_per_m": 5.0
+    },
+    "gemini-2.5-flash": {
+        "provider": "google",
+        "real_id": "google/gemini-2.5-flash",
+        "description": "Google Gemini 2.5 Flash (Ultra-Fast 1M+ Context Workhorse)",
+        "tier": "balanced",
+        "cost_per_m": 0.3
+    },
+    "qwen-2.5-coder-32b": {
+        "provider": "deepseek",
+        "real_id": "qwen/qwen-2.5-coder-32b-instruct",
+        "description": "Qwen 2.5 Coder 32B (SOTA Open Source Code Specialist)",
+        "tier": "code",
+        "cost_per_m": 0.8
+    },
     "o3-pro": {
         "provider": "openai",
         "real_id": "openai/o3-pro",

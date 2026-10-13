@@ -15,6 +15,14 @@ from typing import List, Dict, Optional
 # Fallback Cascade Routing Map for Frontier 2026 Models
 DEFAULT_FAILOVER_CHAINS: Dict[str, List[str]] = {
     "claude-opus-5.5": ["gpt-6.1-sol-pro", "deepseek-r1", "groq-gpt120b"],
+    "claude-3-7-sonnet": ["gpt-4o", "o3-mini", "deepseek-r1", "groq-gpt120b"],
+    "claude-3-5-sonnet": ["gpt-4o", "deepseek-v3", "groq-gpt120b"],
+    "gpt-4o": ["claude-3-5-sonnet", "gemini-2.5-flash", "deepseek-v3"],
+    "o1": ["claude-3-7-sonnet", "o3-mini", "deepseek-r1"],
+    "o3-mini": ["deepseek-r1", "qwen-2.5-coder-32b", "groq-gpt120b"],
+    "gemini-2.5-pro": ["claude-3-5-sonnet", "gpt-4o", "gemini-2.5-flash"],
+    "gemini-2.5-flash": ["deepseek-v3", "groq-gpt120b"],
+    "qwen-2.5-coder-32b": ["codestral-latest", "deepseek-v3"],
     "claude-fable-5.1": ["gpt-6-astra", "deepseek-r1", "groq-gpt120b"],
     "claude-sonnet-5.5": ["gpt-6-astra", "deepseek-v3", "groq-gpt120b"],
     "gpt-6.1-sol-pro": ["claude-opus-5.5", "deepseek-r1", "groq-gpt120b"],
