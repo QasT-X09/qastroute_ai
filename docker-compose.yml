@@ -10,7 +10,16 @@ services:
     environment:
       - PORT=8000
       - HOST=0.0.0.0
-      - QASTROUTE_API_KEY=qast-live-demo-key
+      - ENVIRONMENT=production
+      - REQUIRE_AUTH=true
+      - QASTROUTE_API_KEY=${QASTROUTE_API_KEY:-qast-prod-key}
       - FCC_LOCAL_GATEWAY=http://host.docker.internal:8082
+    volumes:
+      - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,13 +1,13 @@
 # 🛡️ Cyber Security Audit Report
 
 **Project Target:** `qastroute_ai`  
-**Date:** 2026-10-13 20:35:22  
+**Date:** 2026-10-13 21:07:49  
 **Auditor Engine:** Cyber Security Auditor (Heuristic SAST + GPT120B)
 
 ---
 
 ## 📊 Executive Summary
-* **Total Files Scanned:** 14
+* **Total Files Scanned:** 21
 * **Files with Security Findings:** 0
 * **Total Leaked Secrets/Credentials:** 0
 * **Total Code Vulnerabilities:** 0
@@ -27,294 +27,242 @@ No immediate CWE vulnerability patterns detected by heuristic engine.
 ### Assessment for `app\main.py`
 
 ### [SUMMARY]  
-**Severity Rating:** HIGH  
-**Risk Overview:** The application exposes a **privileged API‑key generation endpoint** without any authentication or rate‑limiting, allowing an attacker to create unlimited valid keys and consume paid AI resources. Additional hardening is recommended for the health endpoint, webhook verification, and token handling to avoid information leakage and abuse.
+**Severity Rating:** **MEDIUM**  
+
+The provided `main.py` is generally well‑structured and follows many best‑practice patterns (typed Pydantic models, explicit CORS whitelist, security‑focused middleware, header‑only API‑key handling).  
+However, a few concrete weaknesses could be leveraged by an attacker or could lead to accidental data leakage if the application is deployed with default settings. None of the issues constitute a critical remote‑code‑execution flaw, but they merit remediation to meet OWASP Top 10 expectations and to harden the service for production use.
 
 ---
 
 ## [VULNERABILITY FINDINGS]
 
-| # | Title | CWE‑ID | Severity | Location (approx.) |
-|---|-------|--------|----------|--------------------|
-| 1 | **Unauthenticated API‑Key Generation** – any client can call `/api/keys/generate` and obtain a fully‑functional license key. | CWE‑285: **Improper Authorization** | **HIGH** | `def generate_key_endpoint` (lines 73‑80) |
-| 2 | **Insufficient Webhook Signature Enforcement** – when `config.LEMONSQUEEZY_WEBHOOK_SECRET` is missing the endpoint accepts the request without any verification (only blocks in production). | CWE‑306: **Missing Authentication for Critical Function** | **MEDIUM** | `billing_webhook` (lines 95‑110) |
-| 3 | **Information Disclosure via Health Endpoint** – returns service version and internal model count, aiding reconnaissance. | CWE‑200: **Information Exposure** | **LOW** | `health_check` (lines 44‑49) |
-| 4 | **Potential Abuse of Optional Authentication** – `config.REQUIRE_AUTH` can be set to `False`, allowing anonymous usage while still recording usage, which may be abused to generate traffic without accountability. | CWE‑284: **Improper Access Control** | **MEDIUM** | `openai_chat_completions` (lines 124‑147) |
-| 5 | **Lack of Rate‑Limiting / Payload Guard on Sensitive Endpoints** – the code relies on `SecurityMiddleware` but does not explicitly enforce limits on high‑value endpoints (`/api/keys/generate`, `/v1/chat/completions`). | CWE‑770: **Allocation of Resources without Limits** | **MEDIUM** | Throughout – especially key‑gen and chat endpoints. |
+| # | Title (CWE‑ID) | Severity | Location (approx.) | Impact |
+|---|----------------|----------|--------------------|--------|
+| 1 | **CWE‑285 – Improper Authorization** – *API‑key generation may be unauthenticated in non‑production environments* | **MEDIUM** | `generate_key_endpoint` (lines 73‑87) | An attacker who can reach the endpoint while the service runs with `REQUIRE_AUTH=False` and `IS_PRODUCTION=False` can create privileged API keys without any credential, leading to unauthorized usage and potential billing abuse. |
+| 2 | **CWE‑200 – Information Exposure** – *`/api/stats` returns full internal router statistics* | **LOW** | `get_stats` (lines 48‑55) | Internal metrics (e.g., cache hits, request counters) may reveal implementation details that help an attacker craft more precise attacks or enumerate usage patterns. |
+| 3 | **CWE‑295 – Improper Certificate Validation / CWE‑306 – Missing Idempotency** – *Webhook handler does not enforce idempotency and trusts the JSON body before signature verification* | **MEDIUM** | `billing_webhook` (lines 99‑122) | A replayed webhook (or a crafted payload with a valid signature) could create duplicate API‑key provisions or trigger unwanted side‑effects, leading to over‑provisioning or billing manipulation. |
+| 4 | **CWE‑20 – Improper Input Validation** – *`KeyCreateRequest.user_email` is accepted without validation* | **LOW** | `KeyCreateRequest` model (line 29) | If the email is later interpolated into SQL, logs, or other contexts, an attacker could inject malicious payloads (SQL, command, log injection). |
+| 5 | **CWE‑285 – Missing Rate Limiting on Sensitive Endpoints** – *`/api/keys/*` endpoints rely solely on `SecurityMiddleware` (implementation not shown)* | **LOW** | All key‑management routes | If the custom middleware is mis‑configured or disabled, brute‑force attempts to guess or enumerate API keys become easier. |
+| 6 | **CWE‑209 – Information Leakage Through Exception Details** – *`billing_webhook` returns raw exception messages for malformed JSON* | **LOW** | `billing_webhook` (lines 115‑119) | Stack‑trace or internal error strings could be exposed to an attacker, revealing implementation details. |
+| 7 | **CWE‑400 – Uncontrolled Resource Consumption** – *Streaming endpoints not shown but the `max_tokens` default may allow extremely large payloads* | **LOW** | `OpenAIChatRequest` / `AnthropicMessageRequest` defaults (lines 19‑26) | An attacker could request very large `max_tokens` (if the client overrides defaults) leading to high compute cost and possible denial‑of‑service. |
 
-> **Note:** No hard‑coded secrets, API keys, or passwords were found in the source file.
+> **Note:** No hard‑coded secrets, API keys, or private credentials were discovered in this file.
 
 ---
 
-## Detailed Remediations
+## [REMEDIATIONS]
 
-### 1. Protect API‑Key Generation (`/api/keys/generate`)
+Below are concrete, minimal‑impact patches that address the findings while preserving the existing public API.
 
-**Root Cause:** No authentication or authorization check before creating a new API key.
-
-**Fix Options**  
-*Require an admin‑level token or a signed JWT* **or** *limit the endpoint to internal use (e.g., IP allow‑list).*
-
-#### Recommended Patch (using a simple admin API key stored in an environment variable)
+### 1. Enforce strict admin authorization for API‑key creation regardless of environment  
 
 ```diff
 @@
--from .billing import (
--    verify_api_key,
--    record_key_usage,
--    create_api_key,
--    process_webhook_event,
--    verify_lemonsqueezy_signature
--)
-+from .billing import (
-+    verify_api_key,
-+    record_key_usage,
-+    create_api_key,
-+    process_webhook_event,
-+    verify_lemonsqueezy_signature
-+)
-+import secrets
-+
-+# Admin API key used to protect privileged operations (rotate regularly)
-+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
-+if not ADMIN_API_KEY:
-+    raise RuntimeError("ADMIN_API_KEY environment variable must be set for production")
- 
+ @app.post("/api/keys/generate")
+ def generate_key_endpoint(req: KeyCreateRequest, authorization: Optional[str] = Header(None)):
 @@
--@app.post("/api/keys/generate")
--def generate_key_endpoint(req: KeyCreateRequest):
--    """Generates a licensed API key for customers."""
--    new_key = create_api_key(user_email=req.user_email, tier=req.tier or "pro")
--    return {
--        "status": "success",
--        "api_key": new_key,
--        "user_email": req.user_email,
--        "tier": req.tier or "pro"
--    }
-+@app.post("/api/keys/generate")
-+def generate_key_endpoint(
-+    req: KeyCreateRequest,
-+    authorization: Optional[str] = Header(None)
-+):
-+    """
-+    Generates a licensed API key for customers.
-+    **Protected:** requires a valid ADMIN_API_KEY supplied as a Bearer token.
-+    """
-+    # ----- Authorization check -----
+-    token = normalize_token(authorization)
+-    if config.REQUIRE_AUTH or config.IS_PRODUCTION:
+-        auth_info = verify_api_key(token) if token else None
+-        if not auth_info or not auth_info.get("is_admin"):
+-            raise HTTPException(
+-                status_code=status.HTTP_403_FORBIDDEN,
+-                detail="Administrative privileges required to mint API keys directly."
+-            )
++    # -----------------------------------------------------------------
++    # ALWAYS require an admin API key for key‑generation.
++    # In development environments we still enforce the check to avoid
++    # accidental exposure of privileged operations.
++    # -----------------------------------------------------------------
 +    token = normalize_token(authorization)
-+    if not token or not secrets.compare_digest(token, ADMIN_API_KEY):
++    auth_info = verify_api_key(token) if token else None
++    if not auth_info or not auth_info.get("is_admin"):
 +        raise HTTPException(
 +            status_code=status.HTTP_403_FORBIDDEN,
-+            detail="Forbidden: insufficient privileges to generate API keys."
++            detail="Administrative privileges required to mint API keys directly."
 +        )
-+
-+    # ----- Key creation -----
-+    new_key = create_api_key(user_email=req.user_email, tier=req.tier or "pro")
-+    return {
-+        "status": "success",
-+        "api_key": new_key,
-+        "user_email": req.user_email,
-+        "tier": req.tier or "pro"
-+    }
 ```
 
-*If a more sophisticated RBAC system is already in place, replace the simple admin‑key check with the appropriate permission verification.*
-
----
-
-### 2. Enforce Webhook Signature Verification Unconditionally
-
-**Root Cause:** Signature is only validated when a secret is configured; otherwise the webhook can be called freely in non‑production environments.
-
-**Fix:** Require a signature in **all** environments (development, staging, production). In development you may use a test secret but still verify it.
+### 2. Reduce information exposure in `/api/stats`  
 
 ```diff
 @@
+ @app.get("/api/stats")
+ def get_stats():
+-    return {
+-        **router.stats,
+-        "cache": cache.stats(),
+-        "models_available": list(MODEL_CATALOG.keys())
+-    }
++    # Expose only non‑sensitive operational metrics.
++    safe_stats = {
++        "total_requests": router.stats.get("total_requests", 0),
++        "cache_hits": cache.stats().get("hits", 0),
++        "cache_misses": cache.stats().get("misses", 0),
++        "models_available": list(MODEL_CATALOG.keys()),
++    }
++    return safe_stats
+```
+
+### 3. Add idempotency guard and early signature validation for webhooks  
+
+```diff
+@@
+ async def billing_webhook(request: Request, x_signature: Optional[str] = Header(None)):
+@@
+-    raw_body = await request.body()
 -    if config.LEMONSQUEEZY_WEBHOOK_SECRET:
 -        if not verify_lemonsqueezy_signature(raw_body, x_signature):
 -            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
--    elif os.getenv("ENVIRONMENT") == "production":
+-    elif config.IS_PRODUCTION:
 -        raise HTTPException(
 -            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 -            detail="Webhook secret not configured in production environment."
 -        )
-+    # ------------------------------------------------------------------
-+    # Always require a valid signature. In development you can set a dummy
-+    # secret via the LEMONSQUEEZY_WEBHOOK_SECRET environment variable.
-+    # ------------------------------------------------------------------
-+    if not config.LEMONSQUEEZY_WEBHOOK_SECRET:
+-
+-    try:
+-        payload = await request.json()
+-    except Exception:
+-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
++    raw_body = await request.body()
++
++    # --------------------------------------------------------------
++    # 1️⃣ Verify signature *before* any payload parsing.
++    # --------------------------------------------------------------
++    if config.LEMONSQUEEZY_WEBHOOK_SECRET:
++        if not verify_lemonsqueezy_signature(raw_body, x_signature):
++            raise HTTPException(
++                status_code=status.HTTP_400_BAD_REQUEST,
++                detail="Invalid webhook signature"
++            )
++    elif config.IS_PRODUCTION:
 +        raise HTTPException(
 +            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-+            detail="Webhook secret not configured. Set LEMONSQUEEZY_WEBHOOK_SECRET."
++            detail="Webhook secret not configured in production environment."
 +        )
-+    if not verify_lemonsqueezy_signature(raw_body, x_signature):
-+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-+                            detail="Invalid webhook signature")
-```
-
----
-
-### 3. Reduce Information Exposure on `/health`
-
-**Root Cause:** Returns `version` and `models_count`, which can aid attackers in fingerprinting.
-
-**Fix:** Remove version (or expose only a generic identifier) and keep model count optional.
-
-```diff
-@@
--@app.get("/health")
--def health_check():
--    return {
--        "status": "healthy",
--        "service": "Qastroute AI Gateway",
--        "version": "1.0.0",
--        "models_count": len(MODEL_CATALOG)
--    }
-+@app.get("/health")
-+def health_check():
-+    """
-+    Minimal health check – does **not** disclose internal version or model count.
-+    """
-+    return {"status": "healthy", "service": "Qastroute
++
++    # --------------------------------------------------------------
++    # 2️⃣ Enforce idempotency – store processed event IDs in a fast
++    #    persistent cache (e.g., Redis) and reject duplicates.
++    # --------------------------------------------------------------
++    try:
++        payload = json.loads(raw_body)
++    except Exception:
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail="Invalid JSON payload"
++        )
++
++    event_id = payload.get("event_id") or payload.get("id")
++    if event_id:
++        from .cache
 
 ---
 
 ### Assessment for `app\security.py`
 
 ### [SUMMARY]  
-**Severity Rating:** **HIGH**  
-**Risk Overview:** The middleware trusts the `X‑Forwarded‑For` header without validation and only checks the `Content‑Length` header to enforce payload size. Both issues can be abused to bypass rate‑limiting and to send arbitrarily large request bodies, leading to denial‑of‑service or credential‑brute‑force attacks.
+**Severity Rating:** HIGH  
+**Risk Overview:** The middleware can be forced to read an unbounded request body for chunk‑ed transfers before enforcing the 5 MiB limit, enabling a denial‑of‑service via memory exhaustion. In addition, the handling of the `X‑Forwarded‑For` header can be abused to spoof client IPs when the immediate peer is a trusted proxy.
 
 ---
 
-## [VULNERABILITY FINDINGS]
+### [VULNERABILITY FINDINGS]
 
-| # | Title | CWE | Severity | Location |
-|---|-------|-----|----------|----------|
-| 1 | **Untrusted `X‑Forwarded‑For` Header – Rate‑limit Bypass** | CWE‑200 (Information Exposure) / CWE‑359 (Exposure of Private Data) | **HIGH** | `SecurityMiddleware.dispatch()` – lines where `client_ip` is derived from `X‑Forwarded‑For`. |
-| 2 | **Insufficient Request‑Body Size Enforcement** | CWE‑770 (Allocation of Resources without Limits) | **HIGH** | `SecurityMiddleware.dispatch()` – `Content‑Length` header check only. |
-| 3 | **Potential Unbounded Memory Growth in RateLimiter** | CWE‑770 (Resource Exhaustion) | **MEDIUM** | `RateLimiter.check_rate_limit()` – unbounded `ip_requests` dict. |
-| 4 | **Race Condition on Lazy Lock Creation** | CWE‑362 (Concurrent Execution using Shared Resource without Proper Synchronization) | **LOW** | `RateLimiter._get_lock()` – lock may be created by multiple coroutines simultaneously. |
+| # | Title | Severity | Location | Impact |
+|---|-------|----------|----------|--------|
+| 1 | **CWE‑770 – Uncontrolled Resource Consumption (Chunked Body Read)** | **HIGH** | `SecurityMiddleware.dispatch` – lines handling `transfer‑encoding: chunked` (≈ 45‑66) | An attacker can send a very large chunked request (e.g., several gigabytes). The code calls `await request.body()` **before** checking the size, causing the whole payload to be loaded into memory. This can exhaust RAM, crash the service, or trigger swapping, leading to a denial‑of‑service. |
+| 2 | **CWE‑359 – Trusting HTTP Headers for Authentication/Authorization (IP Spoofing)** | **MEDIUM** | `SecurityMiddleware.dispatch` – client‑IP extraction block (≈ 24‑33) | If a trusted reverse‑proxy is in `config.TRUSTED_PROXIES`, the middleware blindly trusts the first value of the `X‑Forwarded‑For` header. An attacker controlling a downstream proxy (or a compromised trusted proxy) can inject any IP, bypassing rate‑limit enforcement and potentially evading other IP‑based controls. |
+| 3 | **CWE‑749 – Weak Content‑Security‑Policy (unsafe‑inline)** | **LOW** | `SecurityMiddleware.dispatch` – CSP header construction (≈ 87‑92) | The CSP permits `'unsafe-inline'` for scripts and styles, reducing protection against XSS. While not a direct exploit in this component, it weakens overall application security. |
 
-### 1️⃣ Untrusted `X‑Forwarded‑For` Header – Rate‑limit Bypass
-**Impact:**  
-An attacker can set an arbitrary `X‑Forwarded‑For` value, causing the middleware to attribute requests to a victim IP. The attacker can thus bypass per‑IP rate limiting, enabling credential‑stuffing, brute‑force, or DoS attacks against the service while staying under the limit for the spoofed IP.
+---
 
-**Fix:**  
-- Only trust `X‑Forwarded‑For` when the request originates from a known, trusted proxy (e.g., your load‑balancer).  
-- Maintain a configurable list of trusted proxy IPs.  
-- If the request is not from a trusted proxy, fall back to `request.client.host`.  
-- Use `starlette.datastructures.Headers.getlist()` to handle multiple header values safely.
+#### 1️⃣ CWE‑770 – Uncontrolled Resource Consumption (Chunked Body Read)
 
-**Patch (diff):**
-```diff
-@@
- class SecurityMiddleware(BaseHTTPMiddleware):
-@@
--        # Extract real client IP (support reverse proxies / X-Forwarded-For)
--        x_forwarded = request.headers.get("X-Forwarded-For")
--        if x_forwarded:
--            client_ip = x_forwarded.split(",")[0].strip()
--        elif request.client:
--            client_ip = request.client.host
--        else:
--            client_ip = "127.0.0.1"
-+        # -----------------------------------------------------------------
-+        # Extract real client IP.
-+        # Only trust X-Forwarded-For when the request originates from a
-+        # configured trusted proxy.  This prevents malicious clients from
-+        # spoofing the header to evade rate‑limiting.
-+        # -----------------------------------------------------------------
-+        TRUSTED_PROXIES = {"127.0.0.1", "::1"}   # <-- adjust to your environment
-+
-+        # Default to the direct client address
-+        client_ip = request.client.host if request.client else "127.0.0.1"
-+
-+        # If the immediate peer is a trusted proxy, use the first entry of X‑Forwarded‑For
-+        if client_ip in TRUSTED_PROXIES:
-+            x_forwarded = request.headers.get("X-Forwarded-For")
-+            if x_forwarded:
-+                # X‑Forwarded‑For may contain a chain of IPs; the left‑most is the original client
-+                client_ip = x_forwarded.split(",")[0].strip()
+**Why it’s a problem**  
+`await request.body()` reads the *entire* request stream into a single `bytes` object before the size check. For a chunked request with no `Content‑Length`, an attacker can stream arbitrarily large data, forcing the process to allocate memory proportional to the payload size.
+
+**Fix – Stream‑wise size enforcement**  
+
+```python
+# ------------------- ORIGINAL (lines 45‑66) -------------------
+elif request.headers.get("transfer-encoding") == "chunked":
+    # For chunked requests without Content-Length header
+    try:
+        body = await request.body()
+        if len(body) > MAX_BODY_BYTES:
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={"error": {"message": "Payload too large. Maximum size is 5MB.", "type": "payload_too_large"}}
+            )
+        has_sent = False
+        async def async_receive():
+            nonlocal has_sent
+            if not has_sent:
+                has_sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return {"type": "http.disconnect"}
+        request._receive = async_receive
+    except Exception:
+        pass
+# ------------------------------------------------------------
+
+# ------------------- PATCH (replace block) -------------------
+elif request.headers.get("transfer-encoding", "").lower() == "chunked":
+    # For chunked requests without Content‑Length header we read *incrementally*
+    # and stop as soon as the configured limit is exceeded.
+    try:
+        received = 0
+        chunks = []
+
+        async for chunk in request.stream():
+            received += len(chunk)
+            if received > MAX_BODY_BYTES:
+                return JSONResponse(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    content={
+                        "error": {
+                            "message": "Payload too large. Maximum size is 5MB.",
+                            "type": "payload_too_large"
+                        }
+                    },
+                )
+            chunks.append(chunk)
+
+        # Re‑assemble the body for downstream handlers (only if within limit)
+        body = b"".join(chunks)
+
+        # Replace the receive callable so downstream code sees the already‑read body.
+        async def _receive() -> dict:
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request._receive = _receive
+    except Exception:
+        # If streaming fails we treat it as a bad request.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": {"message": "Unable to read request body.", "type": "bad_request"}},
+        )
+# ------------------------------------------------------------
 ```
 
-### 2️⃣ Insufficient Request‑Body Size Enforcement
-**Impact:**  
-Relying solely on the `Content‑Length` header can be bypassed with:
-- `Transfer-Encoding: chunked` (no `Content‑Length` header).  
-- A mismatched `Content‑Length` value (smaller than actual payload).  
+*Key points of the patch*  
+* Uses `await request.stream()` (Starlette’s async iterator) to read chunk‑by‑chunk.  
+* Stops reading as soon as the cumulative size exceeds `MAX_BODY_BYTES`, returning **413** without ever allocating the full oversized payload.  
+* Re‑assembles the body only when it is safely under the limit and injects a lightweight `_receive` callable for downstream handlers.
 
-An attacker can therefore stream a payload far larger than `MAX_BODY_BYTES`, exhausting memory/CPU (DoS) or causing downstream services to crash.
+---
 
-**Fix:**  
-- Read the request body up to `MAX_BODY_BYTES + 1`.  
-- If the read exceeds the limit, abort with HTTP 413.  
-- Use FastAPI’s `request.stream()` (or `await request.body()`) with a size guard.
+#### 2️⃣ CWE‑359 – Trusting `X‑Forwarded‑For` Header
 
-**Patch (diff):**
-```diff
-@@
--        # Check request body size for POST/PUT requests
--        if request.method in ("POST", "PUT", "PATCH"):
--            content_length = request.headers.get("content-length")
--            if content_length:
--                try:
--                    if int(content_length) > MAX_BODY_BYTES:
--                        return JSONResponse(
--                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
--                            content={"error": {"message": "Payload too large. Maximum size is 5MB.", "type": "payload_too_large"}}
--                        )
--                except ValueError:
--                    pass
-+        # -----------------------------------------------------------------
-+        # Enforce maximum payload size for state‑changing methods.
-+        # This checks the actual bytes read, not just the Content‑Length
-+        # header, and works with chunked transfers.
-+        # -----------------------------------------------------------------
-+        if request.method in ("POST", "PUT", "PATCH"):
-+            try:
-+                # Read up to MAX_BODY_BYTES + 1 to detect oversize
-+                body = await request.body()
-+                if len(body) > MAX_BODY_BYTES:
-+                    return JSONResponse(
-+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-+                        content={
-+                            "error": {
-+                                "message": f"Payload too large. Maximum size is {MAX_BODY_BYTES // (1024*1024)} MiB.",
-+                                "type": "payload_too_large",
-+                            }
-+                        },
-+                    )
-+                # Re‑inject the body for downstream handlers
-+                request._receive = lambda: {"type": "http.request", "body": body, "more_body": False}
-+            except Exception:
-+                # If body reading fails, treat it as a bad request
-+                return JSONResponse(
-+                    status_code=status.HTTP_400_BAD_REQUEST,
-+                    content={"error": {"message": "Unable to read request body.", "type": "bad_request"}},
-+                )
-```
+**Why it’s a problem**  
+When the immediate peer (`peer_host`) is listed in `config.TRUSTED_PROXIES`, the code trusts the **first** comma‑separated entry of `X‑Forwarded‑For`. An attacker who can influence that header (e.g., via a compromised proxy) can set any IP address, bypassing per‑IP rate limiting and other IP‑based defenses.
 
-*(The lambda re‑injects the already‑read body so the downstream endpoint can still access it. Adjust for your ASGI server if needed.)*
+**Fix – Validate the header chain and discard untrusted entries**  
 
-### 3️⃣ Potential Unbounded Memory Growth in RateLimiter
-**Impact:**  
-An attacker can generate a flood of distinct IP addresses (e.g., via a botnet) causing `ip_requests` to store an entry per IP. Over time this can exhaust the server’s memory (CWE‑770).
-
-**Fix:**  
-- Impose a hard cap on the number of tracked IPs (e.g., 10 000).  
-- Evict the oldest entry when the cap is reached.  
-- Optionally, use an LRU cache (`functools.lru_cache` or `cachetools.LRUCache`) instead of a plain dict.
-
-**Patch (diff):**
-```diff
-@@
- class RateLimiter:
-@@
--        self.ip_requests: Dict[str, Deque[float]] = {}
-+        # Limit the number of distinct IP entries to prevent unbounded memory use.
-+        self.MAX_TRACKED_IPS = 10_000
-+        self.ip_requests: Dict[str,
+```python
+# ------------------- ORIGINAL (lines 24‑33) -------------------
+peer_host = request.client.host if request.client else "127.0
 
 ---
 
