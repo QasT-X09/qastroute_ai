@@ -1,7 +1,7 @@
 # 🛡️ Cyber Security Audit Report
 
 **Project Target:** `qastroute_ai`  
-**Date:** 2026-10-13 21:07:49  
+**Date:** 2026-10-13 21:19:47  
 **Auditor Engine:** Cyber Security Auditor (Heuristic SAST + GPT120B)
 
 ---
@@ -26,42 +26,35 @@ No immediate CWE vulnerability patterns detected by heuristic engine.
 
 ### Assessment for `app\main.py`
 
-### [SUMMARY]  
+**### [SUMMARY]**  
 **Severity Rating:** **MEDIUM**  
-
-The provided `main.py` is generally well‑structured and follows many best‑practice patterns (typed Pydantic models, explicit CORS whitelist, security‑focused middleware, header‑only API‑key handling).  
-However, a few concrete weaknesses could be leveraged by an attacker or could lead to accidental data leakage if the application is deployed with default settings. None of the issues constitute a critical remote‑code‑execution flaw, but they merit remediation to meet OWASP Top 10 expectations and to harden the service for production use.
+**Risk Overview:** The application is generally well‑structured and uses a custom security middleware, but a few logical oversights could allow unauthorized creation of API keys and expose potentially sensitive internal information. No hard‑coded secrets were discovered.
 
 ---
 
-## [VULNERABILITY FINDINGS]
+## **[VULNERABILITY FINDINGS]**
 
-| # | Title (CWE‑ID) | Severity | Location (approx.) | Impact |
-|---|----------------|----------|--------------------|--------|
-| 1 | **CWE‑285 – Improper Authorization** – *API‑key generation may be unauthenticated in non‑production environments* | **MEDIUM** | `generate_key_endpoint` (lines 73‑87) | An attacker who can reach the endpoint while the service runs with `REQUIRE_AUTH=False` and `IS_PRODUCTION=False` can create privileged API keys without any credential, leading to unauthorized usage and potential billing abuse. |
-| 2 | **CWE‑200 – Information Exposure** – *`/api/stats` returns full internal router statistics* | **LOW** | `get_stats` (lines 48‑55) | Internal metrics (e.g., cache hits, request counters) may reveal implementation details that help an attacker craft more precise attacks or enumerate usage patterns. |
-| 3 | **CWE‑295 – Improper Certificate Validation / CWE‑306 – Missing Idempotency** – *Webhook handler does not enforce idempotency and trusts the JSON body before signature verification* | **MEDIUM** | `billing_webhook` (lines 99‑122) | A replayed webhook (or a crafted payload with a valid signature) could create duplicate API‑key provisions or trigger unwanted side‑effects, leading to over‑provisioning or billing manipulation. |
-| 4 | **CWE‑20 – Improper Input Validation** – *`KeyCreateRequest.user_email` is accepted without validation* | **LOW** | `KeyCreateRequest` model (line 29) | If the email is later interpolated into SQL, logs, or other contexts, an attacker could inject malicious payloads (SQL, command, log injection). |
-| 5 | **CWE‑285 – Missing Rate Limiting on Sensitive Endpoints** – *`/api/keys/*` endpoints rely solely on `SecurityMiddleware` (implementation not shown)* | **LOW** | All key‑management routes | If the custom middleware is mis‑configured or disabled, brute‑force attempts to guess or enumerate API keys become easier. |
-| 6 | **CWE‑209 – Information Leakage Through Exception Details** – *`billing_webhook` returns raw exception messages for malformed JSON* | **LOW** | `billing_webhook` (lines 115‑119) | Stack‑trace or internal error strings could be exposed to an attacker, revealing implementation details. |
-| 7 | **CWE‑400 – Uncontrolled Resource Consumption** – *Streaming endpoints not shown but the `max_tokens` default may allow extremely large payloads* | **LOW** | `OpenAIChatRequest` / `AnthropicMessageRequest` defaults (lines 19‑26) | An attacker could request very large `max_tokens` (if the client overrides defaults) leading to high compute cost and possible denial‑of‑service. |
+| # | Title | CWE‑ID | Severity | Location |
+|---|-------|--------|----------|----------|
+| 1 | **Unauthenticated API‑Key Generation in Development Mode** | CWE‑284: Improper Access Control | **HIGH** | `generate_key_endpoint` (lines 73‑88) |
+| 2 | **Insufficient Validation of User‑Provided Email** | CWE‑20: Improper Input Validation | **MEDIUM** | `KeyCreateRequest` model (lines 43‑45) |
+| 3 | **Verbose Error Messages May Leak Operational Details** | CWE‑200: Information Exposure | **LOW** | `billing_webhook` (lines 123‑137) and other `HTTPException` details |
+| 4 | **Potential Logging of API Keys via Response Body** | CWE‑532: Information Exposure Through Log Files | **LOW** | `generate_key_endpoint` response (lines 84‑88) |
+| 5 | **Missing Explicit Rate‑Limiting on Sensitive Endpoints** | CWE‑307: Improper Restriction of Excessive Authentication Attempts | **MEDIUM** (design‑time) | Not a line‑specific bug, but an omission in the current file |
 
-> **Note:** No hard‑coded secrets, API keys, or private credentials were discovered in this file.
+> **Note:** All other examined code paths (CORS handling, webhook signature verification, token normalization, etc.) follow secure‑by‑design practices and do **not** contain exploitable flaws.
 
 ---
 
-## [REMEDIATIONS]
+### **1️⃣ Unauthenticated API‑Key Generation in Development Mode**
 
-Below are concrete, minimal‑impact patches that address the findings while preserving the existing public API.
+**Impact**  
+If `config.REQUIRE_AUTH` is **False** *and* `config.IS_PRODUCTION` is **False** (the typical development setting), any client can call **POST `/api/keys/generate`** and receive a fresh privileged API key. An attacker could thus obtain unlimited free usage or elevate privileges when the same code is promoted without toggling the flags.
 
-### 1. Enforce strict admin authorization for API‑key creation regardless of environment  
+**Fix** – Enforce admin verification **independent** of environment flags, and make the endpoint explicitly require an admin token.  
 
 ```diff
 @@
- @app.post("/api/keys/generate")
- def generate_key_endpoint(req: KeyCreateRequest, authorization: Optional[str] = Header(None)):
-@@
--    token = normalize_token(authorization)
 -    if config.REQUIRE_AUTH or config.IS_PRODUCTION:
 -        auth_info = verify_api_key(token) if token else None
 -        if not auth_info or not auth_info.get("is_admin"):
@@ -69,200 +62,227 @@ Below are concrete, minimal‑impact patches that address the findings while pre
 -                status_code=status.HTTP_403_FORBIDDEN,
 -                detail="Administrative privileges required to mint API keys directly."
 -            )
-+    # -----------------------------------------------------------------
-+    # ALWAYS require an admin API key for key‑generation.
-+    # In development environments we still enforce the check to avoid
-+    # accidental exposure of privileged operations.
-+    # -----------------------------------------------------------------
-+    token = normalize_token(authorization)
++    # ------------------------------------------------------------------
++    # ALWAYS require an admin API key to mint new keys.
++    # Development environments may set a dedicated admin token via the
++    # environment variable `ADMIN_API_KEY`.  The check below does **not**
++    # depend on `REQUIRE_AUTH` or `IS_PRODUCTION` so that accidental
++    # exposure of the endpoint cannot happen when code is promoted.
++    # ------------------------------------------------------------------
 +    auth_info = verify_api_key(token) if token else None
 +    if not auth_info or not auth_info.get("is_admin"):
 +        raise HTTPException(
 +            status_code=status.HTTP_403_FORBIDDEN,
-+            detail="Administrative privileges required to mint API keys directly."
++            detail="Administrative privileges required to mint API keys."
 +        )
 ```
 
-### 2. Reduce information exposure in `/api/stats`  
+*If the application truly needs an “open‑registration” mode, expose a separate **self‑service** endpoint that issues keys with limited privileges, and keep this admin‑only endpoint locked down.*
+
+---
+
+### **2️⃣ Insufficient Validation of User‑Provided Email**
+
+**Impact**  
+`KeyCreateRequest.user_email` is declared as a plain `str`. Down‑stream storage (e.g., a database) may be vulnerable to SQL/NoSQL injection, log injection, or malformed email values if the field is not validated.
+
+**Fix** – Use Pydantic’s `EmailStr` (or a custom regex) to enforce a proper e‑mail format.
 
 ```diff
 @@
- @app.get("/api/stats")
- def get_stats():
--    return {
--        **router.stats,
--        "cache": cache.stats(),
--        "models_available": list(MODEL_CATALOG.keys())
--    }
-+    # Expose only non‑sensitive operational metrics.
-+    safe_stats = {
-+        "total_requests": router.stats.get("total_requests", 0),
-+        "cache_hits": cache.stats().get("hits", 0),
-+        "cache_misses": cache.stats().get("misses", 0),
-+        "models_available": list(MODEL_CATALOG.keys()),
-+    }
-+    return safe_stats
+-from pydantic import BaseModel, Field
++from pydantic import BaseModel, Field, EmailStr
+@@
+-class KeyCreateRequest(BaseModel):
+-    user_email: str
+-    tier: Optional[str] = "pro"
++class KeyCreateRequest(BaseModel):
++    # Enforce RFC‑5322‑compliant e‑mail addresses.
++    user_email: EmailStr
++    tier: Optional[str] = "pro"
 ```
 
-### 3. Add idempotency guard and early signature validation for webhooks  
+---
+
+### **3️⃣ Verbose Error Messages May Leak Operational Details**
+
+**Impact**  
+Returning internal configuration states (e.g., “Webhook secret not configured in production environment”) can help an attacker confirm that the server is running in production and that a secret is missing, aiding reconnaissance.
+
+**Fix** – Replace detailed internal messages with generic ones, and log the specifics internally.
 
 ```diff
 @@
- async def billing_webhook(request: Request, x_signature: Optional[str] = Header(None)):
-@@
--    raw_body = await request.body()
--    if config.LEMONSQUEEZY_WEBHOOK_SECRET:
--        if not verify_lemonsqueezy_signature(raw_body, x_signature):
--            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
--    elif config.IS_PRODUCTION:
 -        raise HTTPException(
 -            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 -            detail="Webhook secret not configured in production environment."
 -        )
--
--    try:
--        payload = await request.json()
--    except Exception:
--        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
-+    raw_body = await request.body()
-+
-+    # --------------------------------------------------------------
-+    # 1️⃣ Verify signature *before* any payload parsing.
-+    # --------------------------------------------------------------
-+    if config.LEMONSQUEEZY_WEBHOOK_SECRET:
-+        if not verify_lemonsqueezy_signature(raw_body, x_signature):
-+            raise HTTPException(
-+                status_code=status.HTTP_400_BAD_REQUEST,
-+                detail="Invalid webhook signature"
-+            )
-+    elif config.IS_PRODUCTION:
++        # Log the mis‑configuration for ops staff; expose a generic error to the client.
++        logger.error("Missing LemonSqueezy webhook secret in production")
 +        raise HTTPException(
 +            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-+            detail="Webhook secret not configured in production environment."
++            detail="Internal server error."
 +        )
-+
-+    # --------------------------------------------------------------
-+    # 2️⃣ Enforce idempotency – store processed event IDs in a fast
-+    #    persistent cache (e.g., Redis) and reject duplicates.
-+    # --------------------------------------------------------------
-+    try:
-+        payload = json.loads(raw_body)
-+    except Exception:
-+        raise HTTPException(
-+            status_code=status.HTTP_400_BAD_REQUEST,
-+            detail="Invalid JSON payload"
-+        )
-+
-+    event_id = payload.get("event_id") or payload.get("id")
-+    if event_id:
-+        from .cache
+```
+
+Apply the same pattern to any other `detail` strings that reveal configuration or implementation specifics.
+
+---
+
+### **4️⃣ Potential Logging of API Keys via Response Body**
+
+**Impact**  
+The freshly created API key is returned in the JSON response. If the server or any upstream reverse proxy logs full request/response bodies (common in development), the key may be written to log files, creating a credential leak.
+
+**Fix** – Keep the key in the response **only** for the immediate client, and encourage the client to store it securely. Add a server‑side note to suppress body logging for this endpoint (depends on logging framework) and optionally mask the key in logs.
+
+```diff
+@@
+-    return {
+-        "status": "success",
+-        "api_key": new_key,
+-        "user_email": req.user_email,
+-        "tier": req.tier or "pro"
+-    }
++    # NOTE: The raw API key is returned only once.  Ensure that any request/response
++    # logging middleware excludes the `api_key` field to avoid persisting it.
++    return {
++        "status": "success",
++        "api_key": new_key,
++        "user_email": req.user_email,
++        "tier": req.tier
 
 ---
 
 ### Assessment for `app\security.py`
 
 ### [SUMMARY]  
-**Severity Rating:** HIGH  
-**Risk Overview:** The middleware can be forced to read an unbounded request body for chunk‑ed transfers before enforcing the 5 MiB limit, enabling a denial‑of‑service via memory exhaustion. In addition, the handling of the `X‑Forwarded‑For` header can be abused to spoof client IPs when the immediate peer is a trusted proxy.
+**Severity Rating:** **HIGH**  
+**Risk Overview:** The middleware trusts the `X‑Forwarded‑For` header without sufficient validation, allowing IP spoof‑spoofing and rate‑limit evasion. In addition, the Content‑Security‑Policy header weakens XSS defenses by permitting `'unsafe‑inline'` scripts/styles.
 
 ---
 
-### [VULNERABILITY FINDINGS]
+## [VULNERABILITY FINDINGS]
 
-| # | Title | Severity | Location | Impact |
-|---|-------|----------|----------|--------|
-| 1 | **CWE‑770 – Uncontrolled Resource Consumption (Chunked Body Read)** | **HIGH** | `SecurityMiddleware.dispatch` – lines handling `transfer‑encoding: chunked` (≈ 45‑66) | An attacker can send a very large chunked request (e.g., several gigabytes). The code calls `await request.body()` **before** checking the size, causing the whole payload to be loaded into memory. This can exhaust RAM, crash the service, or trigger swapping, leading to a denial‑of‑service. |
-| 2 | **CWE‑359 – Trusting HTTP Headers for Authentication/Authorization (IP Spoofing)** | **MEDIUM** | `SecurityMiddleware.dispatch` – client‑IP extraction block (≈ 24‑33) | If a trusted reverse‑proxy is in `config.TRUSTED_PROXIES`, the middleware blindly trusts the first value of the `X‑Forwarded‑For` header. An attacker controlling a downstream proxy (or a compromised trusted proxy) can inject any IP, bypassing rate‑limit enforcement and potentially evading other IP‑based controls. |
-| 3 | **CWE‑749 – Weak Content‑Security‑Policy (unsafe‑inline)** | **LOW** | `SecurityMiddleware.dispatch` – CSP header construction (≈ 87‑92) | The CSP permits `'unsafe-inline'` for scripts and styles, reducing protection against XSS. While not a direct exploit in this component, it weakens overall application security. |
+| # | Title | Severity | Location |
+|---|-------|----------|----------|
+| 1 | **CWE‑359: Improper Validation of X‑Forwarded‑For Header (IP Spoofing)** | **HIGH** | `SecurityMiddleware.dispatch` – lines where `client_ip` is derived from `X‑Forwarded‑For`. |
+| 2 | **CWE‑79: Weak Content‑Security‑Policy (unsafe‑inline)** | **MEDIUM** | `SecurityMiddleware.dispatch` – CSP header construction (last few lines). |
+| 3 | **CWE‑404: In‑Memory Rate Limiter Not Shared Across Workers** | **LOW** | `RateLimiter` class – in‑memory data structures. |
+| 4 | **CWE‑770: Incomplete Payload Size Enforcement (GET/DELETE etc.)** | **LOW** | `SecurityMiddleware.dispatch` – payload‑size guard limited to POST/PUT/PATCH. |
 
----
+### 1. CWE‑359 – Improper Validation of `X‑Forwarded‑For` Header  
+**Impact:** An attacker can send a request from a trusted proxy IP (or from any IP if the proxy list is mis‑configured) with a forged `X‑Forwarded‑For` value, causing the middleware to treat the attacker’s address as a trusted client. This defeats rate‑limiting and any IP‑based access controls.  
 
-#### 1️⃣ CWE‑770 – Uncontrolled Resource Consumption (Chunked Body Read)
+**Why it’s a problem:**  
+* The code trusts the first entry of the header (`client_ip = x_forwarded.split(",")[0].strip()`) as the real client IP **without** validating the number of hops or that the header was added by a trusted reverse‑proxy only.  
+* If a trusted proxy forwards the request unchanged, a malicious client can simply set the header themselves (e.g., via `curl -H "X-Forwarded-For: 1.2.3.4"`).  
 
-**Why it’s a problem**  
-`await request.body()` reads the *entire* request stream into a single `bytes` object before the size check. For a chunked request with no `Content‑Length`, an attacker can stream arbitrarily large data, forcing the process to allocate memory proportional to the payload size.
-
-**Fix – Stream‑wise size enforcement**  
+**Fix:** Use a robust “trusted‑proxy chain” parsing routine that discards any untrusted entries and only trusts the left‑most IP that is **not** in the trusted‑proxy list. Prefer a vetted library such as `werkzeug.middleware.proxy_fix.ProxyFix` or implement a safe parser.
 
 ```python
-# ------------------- ORIGINAL (lines 45‑66) -------------------
-elif request.headers.get("transfer-encoding") == "chunked":
-    # For chunked requests without Content-Length header
-    try:
-        body = await request.body()
-        if len(body) > MAX_BODY_BYTES:
-            return JSONResponse(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                content={"error": {"message": "Payload too large. Maximum size is 5MB.", "type": "payload_too_large"}}
-            )
-        has_sent = False
-        async def async_receive():
-            nonlocal has_sent
-            if not has_sent:
-                has_sent = True
-                return {"type": "http.request", "body": body, "more_body": False}
-            return {"type": "http.disconnect"}
-        request._receive = async_receive
-    except Exception:
-        pass
-# ------------------------------------------------------------
+# --- security.py (replace the IP extraction block) ---
+# 1. Safely extract client IP respecting trusted reverse proxies
+peer_host = request.client.host if request.client else "127.0.0.1"
+client_ip = peer_host
 
-# ------------------- PATCH (replace block) -------------------
-elif request.headers.get("transfer-encoding", "").lower() == "chunked":
-    # For chunked requests without Content‑Length header we read *incrementally*
-    # and stop as soon as the configured limit is exceeded.
-    try:
-        received = 0
-        chunks = []
-
-        async for chunk in request.stream():
-            received += len(chunk)
-            if received > MAX_BODY_BYTES:
-                return JSONResponse(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    content={
-                        "error": {
-                            "message": "Payload too large. Maximum size is 5MB.",
-                            "type": "payload_too_large"
-                        }
-                    },
-                )
-            chunks.append(chunk)
-
-        # Re‑assemble the body for downstream handlers (only if within limit)
-        body = b"".join(chunks)
-
-        # Replace the receive callable so downstream code sees the already‑read body.
-        async def _receive() -> dict:
-            return {"type": "http.request", "body": body, "more_body": False}
-
-        request._receive = _receive
-    except Exception:
-        # If streaming fails we treat it as a bad request.
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": {"message": "Unable to read request body.", "type": "bad_request"}},
-        )
-# ------------------------------------------------------------
+# Only trust X-Forwarded-For if the immediate peer is a known proxy
+if peer_host in config.TRUSTED_PROXIES:
+    x_forwarded = request.headers.get("X-Forwarded-For")
+    if x_forwarded:
+        # X-Forwarded-For may contain a chain: client, proxy1, proxy2, ...
+        # Split and trim whitespace
+        forwarded_ips = [ip.strip() for ip in x_forwarded.split(",")]
+        # Walk the chain from right‑most (closest proxy) to left‑most
+        # Discard any IP that is itself a trusted proxy
+        for ip in reversed(forwarded_ips):
+            if ip not in config.TRUSTED_PROXIES:
+                client_ip = ip
+                break
+        # If all entries are trusted proxies, fall back to the immediate peer
 ```
 
-*Key points of the patch*  
-* Uses `await request.stream()` (Starlette’s async iterator) to read chunk‑by‑chunk.  
-* Stops reading as soon as the cumulative size exceeds `MAX_BODY_BYTES`, returning **413** without ever allocating the full oversized payload.  
-* Re‑assembles the body only when it is safely under the limit and injects a lightweight `_receive` callable for downstream handlers.
+*Optional:* If you use FastAPI + Starlette, you can wrap the app with `ProxyHeadersMiddleware` from `starlette.middleware.proxy_headers` and configure `trusted_hosts` appropriately.
 
 ---
 
-#### 2️⃣ CWE‑359 – Trusting `X‑Forwarded‑For` Header
+### 2. CWE‑79 – Weak Content‑Security‑Policy (allows `'unsafe-inline'`)  
+**Impact:** The CSP permits inline JavaScript and CSS, which defeats the browser’s XSS mitigation. An attacker who can inject script content (e.g., via reflected XSS or a stored payload) can execute it despite the header.  
 
-**Why it’s a problem**  
-When the immediate peer (`peer_host`) is listed in `config.TRUSTED_PROXIES`, the code trusts the **first** comma‑separated entry of `X‑Forwarded‑For`. An attacker who can influence that header (e.g., via a compromised proxy) can set any IP address, bypassing per‑IP rate limiting and other IP‑based defenses.
-
-**Fix – Validate the header chain and discard untrusted entries**  
+**Fix:** Remove `'unsafe-inline'` from both `script-src` and `style-src`. If you need to allow a small set of trusted inline scripts, consider using nonces or hashes instead.
 
 ```python
-# ------------------- ORIGINAL (lines 24‑33) -------------------
-peer_host = request.client.host if request.client else "127.0
+# --- security.py (replace the CSP header) ---
+response.headers["Content-Security-Policy"] = (
+    "default-src 'self'; "
+    "script-src 'self' 'nonce-{nonce}'; "      # generate a per‑response nonce
+    "style-src 'self' 'nonce-{nonce}'; "       # same nonce can be reused for style
+    "img-src 'self' data:; "
+    "connect-src 'self'"
+)
+```
+
+*Implementation note:* Generate a random base64 nonce per request (e.g., `nonce = secrets.token_urlsafe(16)`) and inject it into the header as shown. Ensure any templates that need inline scripts/style include `nonce="{{ nonce }}"`.
+
+If you cannot use nonces, simply drop the `'unsafe-inline'` directives:
+
+```python
+response.headers["Content-Security-Policy"] = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'"
+)
+```
+
+---
+
+### 3. CWE‑404 – In‑Memory Rate Limiter Not Shared Across Workers  
+**Impact:** When the FastAPI application runs with multiple worker processes (e.g., via Uvicorn/Gunicorn), each process maintains its own `RateLimiter` instance. An attacker can bypass the per‑IP limit by distributing requests across workers, effectively multiplying the allowed request count.  
+
+**Fix (low‑severity but recommended):** Move the rate‑limiting state to a shared store such as Redis or Memcached. Below is a minimal change that swaps the in‑memory `OrderedDict` for a Redis sorted‑set implementation (requires `redis` library).
+
+```python
+# --- Add at top of file ---
+import aioredis
+
+# Initialize a singleton Redis client (adjust connection settings as needed)
+redis = aioredis.from_url("redis://localhost:6379", decode_responses=True)
+
+# --- Replace RateLimiter implementation with Redis‑backed version ---
+class RateLimiter:
+    def __init__(self, limit: int = DEFAULT_RATE_LIMIT, window: int = DEFAULT_WINDOW_SECONDS):
+        self.limit = limit
+        self.window = window
+
+    async def check_rate_limit(self, client_ip: str) -> tuple[bool, int, float]:
+        now = time.time()
+        key = f"rl:{client_ip}"
+        # Add current timestamp
+        await redis.zadd(key, {now: now})
+        # Remove timestamps older than the window
+        await redis.zremrangebyscore(key, 0, now - self.window)
+        # Get current count
+        cnt = await redis.zcard(key)
+        # Set TTL to auto‑expire idle keys
+        await redis.expire(key, self.window * 2)
+
+        if cnt > self.limit:
+            earliest = await redis.zrange(key, 0, 0, withscores=True)
+            retry_after = self.window - (now - float(earliest[0][1]))
+            return False, 0, max(0.1, retry_after)
+
+        remaining = self.limit - cnt
+        return True, remaining, float(self.window)
+```
+
+If adding Redis is overkill for the deployment, at minimum document the limitation so operators understand the risk.
+
+---
+
+### 4. CWE‑770 – Incomplete Payload Size Enforcement  
+**Impact:** Only `POST`, `PUT
 
 ---
 

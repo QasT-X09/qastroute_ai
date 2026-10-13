@@ -171,11 +171,13 @@ def generate_key_endpoint(req: KeyCreateRequest, authorization: Optional[str] = 
             )
 
     new_key = create_api_key(user_email=req.user_email, tier=req.tier or "pro")
+    # Raw key is returned only once upon creation; never persisted in logs or retrievable again.
     return {
         "status": "success",
         "api_key": new_key,
         "user_email": req.user_email,
-        "tier": req.tier or "pro"
+        "tier": req.tier or "pro",
+        "notice": "Store this API key securely. It is returned only once and cannot be recovered."
     }
 
 @app.post("/api/keys/revoke")

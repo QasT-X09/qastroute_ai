@@ -7,6 +7,8 @@ tenant cache isolation, true cost accounting, and zero synthetic responses.
 import pytest
 import uuid
 import hashlib
+import os
+from pathlib import Path
 from fastapi.testclient import TestClient
 from app.main import app
 from app.billing import create_api_key, verify_api_key, revoke_api_key, process_webhook_event
@@ -140,3 +142,65 @@ def test_security_headers_present():
     assert res.headers.get("X-Frame-Options") == "DENY"
     assert "Content-Security-Policy" in res.headers
     assert "Referrer-Policy" in res.headers
+
+def test_budget_guard_concurrent_spend():
+    """Verifies atomic concurrent spend recording without race conditions."""
+    from concurrent.futures import ThreadPoolExecutor
+    from app.failover import BudgetGuard
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        db_path = tmp.name
+
+    try:
+        guard = BudgetGuard(db_path=Path(db_path), daily_cap_usd=100.0)
+        num_threads = 20
+        spend_per_thread = 0.50
+
+        def worker():
+            guard.record_spend(spend_per_thread)
+
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            list(executor.map(lambda _: worker(), range(num_threads)))
+
+        # Expected total: 20 * 0.50 = 10.00
+        assert guard.current_spend() == pytest.approx(10.00, rel=1e-3)
+        assert guard.remaining_budget() == pytest.approx(90.00, rel=1e-3)
+        assert not guard.is_over_budget()
+    finally:
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+def test_tool_calling_escalates_to_flagship():
+    """Verifies that requests requiring tool/function execution are escalated to flagship tier."""
+    tier, model = router.classify_complexity("get current weather", has_tools=True)
+    assert tier == "flagship"
+    assert model == "claude-fable-5.1"
+
+def test_upstream_outage_raises_502_zero_fabrication(monkeypatch):
+    """Verifies that when all upstream providers fail, gateway raises 502 with structured error instead of fake 200."""
+    from app.adapters.base import ProviderError
+    from app.adapters.registry import registry
+
+    class AlwaysFailingAdapter:
+        name = "mock_failing"
+        def is_configured(self):
+            return True
+        async def generate(self, *args, **kwargs):
+            raise ProviderError("Upstream timeout on all nodes", status_code=504, is_retryable=False)
+
+    monkeypatch.setattr(registry, "get_adapter", lambda provider: AlwaysFailingAdapter())
+
+    res = client.post("/v1/chat/completions", json={
+        "model": "gpt-6-astra",
+        "messages": [{"role": "user", "content": "Hello world"}]
+    })
+
+    # Must NOT fabricate a fake 200 response!
+    assert res.status_code == 502
+    data = res.json()
+    assert "error" in data["detail"]
+    assert data["detail"]["error"]["type"] == "upstream_provider_failure"
+

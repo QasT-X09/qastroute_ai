@@ -86,8 +86,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if peer_host in config.TRUSTED_PROXIES:
             x_forwarded = request.headers.get("X-Forwarded-For")
             if x_forwarded:
-                # First element is original client IP
-                client_ip = x_forwarded.split(",")[0].strip()
+                forwarded_ips = [ip.strip() for ip in x_forwarded.split(",") if ip.strip()]
+                # Walk the chain from right-most (closest proxy) to left-most, discarding trusted proxies
+                for ip in reversed(forwarded_ips):
+                    if ip not in config.TRUSTED_PROXIES:
+                        client_ip = ip
+                        break
 
         # 2. Guard against oversized request bodies independently of Content-Length (CWE-770)
         if request.method in ("POST", "PUT", "PATCH"):
