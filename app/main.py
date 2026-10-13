@@ -19,6 +19,7 @@ from . import config
 from .router import router, MODEL_CATALOG
 from .providers import dispatch_completion
 from .cache import cache
+from .security import SecurityMiddleware, normalize_token
 from .billing import (
     verify_api_key,
     record_key_usage,
@@ -33,15 +34,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000").split(",")
+# Hardened Security Middleware (Rate Limiting, Payload Size Guard, Security Headers)
+app.add_middleware(SecurityMiddleware)
 
-# Secure CORS Middleware
+ALLOWED_ORIGINS = [
+    origin.strip() for origin in
+    os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000").split(",")
+    if origin.strip()
+]
+
+# Hardened CORS Middleware (Explicit headers only, preventing wildcard vulnerabilities)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"]
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"]
 )
 
 # Static Web Dashboard mount
@@ -128,11 +136,25 @@ def generate_key_endpoint(req: KeyCreateRequest):
     }
 
 @app.get("/api/keys/verify")
-def verify_key_endpoint(key: str):
-    """Verifies validity of a customer API key."""
-    info = verify_api_key(key)
+def verify_key_endpoint(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None),
+    key: Optional[str] = None
+):
+    """
+    Verifies validity of a customer API key.
+    Prefers Authorization: Bearer <key> or X-API-Key header to avoid leaking keys in URLs (CWE-200).
+    """
+    clean_key = normalize_token(authorization, x_api_key) or (key or "").strip()
+    if not clean_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API Key must be provided via 'Authorization: Bearer <key>' or 'X-API-Key' header."
+        )
+
+    info = verify_api_key(clean_key)
     if not info:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
     return {"status": "valid", "key_info": info}
 
 @app.post("/api/webhook/billing")
@@ -140,16 +162,22 @@ async def billing_webhook(request: Request, x_signature: Optional[str] = Header(
     """
     Webhook listener for LemonSqueezy / Paddle payments.
     Automatically provisions API keys on successful payment.
+    Requires signature verification in production (CWE-306).
     """
     raw_body = await request.body()
     if config.LEMONSQUEEZY_WEBHOOK_SECRET:
         if not verify_lemonsqueezy_signature(raw_body, x_signature):
-            raise HTTPException(status_code=400, detail="Invalid webhook signature")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
+    elif os.getenv("ENVIRONMENT") == "production":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook secret not configured in production environment."
+        )
     
     try:
         payload = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     event_name = (
         payload.get("meta", {}).get("event_name")
@@ -160,6 +188,7 @@ async def billing_webhook(request: Request, x_signature: Optional[str] = Header(
     return result
 
 
+
 @app.post("/v1/chat/completions")
 async def openai_chat_completions(req: OpenAIChatRequest, authorization: Optional[str] = Header(None)):
     """
@@ -167,7 +196,7 @@ async def openai_chat_completions(req: OpenAIChatRequest, authorization: Optiona
     Accepts model='auto' for automatic smart cost-optimization.
     """
     # Enforce API Key authentication if REQUIRE_AUTH is true
-    token = authorization or ""
+    token = normalize_token(authorization)
     if config.REQUIRE_AUTH:
         auth_info = verify_api_key(token)
         if not auth_info:
@@ -238,7 +267,7 @@ async def anthropic_messages(req: AnthropicMessageRequest, x_api_key: Optional[s
     Anthropic-compatible messages endpoint.
     Supports Claude Opus 5.5, Fable 5.1, and all universal models via Anthropic SDK.
     """
-    token = x_api_key or authorization or ""
+    token = normalize_token(authorization, x_api_key)
     if config.REQUIRE_AUTH:
         auth_info = verify_api_key(token)
         if not auth_info:

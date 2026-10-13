@@ -118,10 +118,17 @@ def test_api_key_generation_and_verification():
     assert data["api_key"].startswith("qr_live_")
     assert data["tier"] == "pro"
 
-    # Verify key
-    res_verify = client.get(f"/api/keys/verify?key={data['api_key']}")
+    # Verify key via header (CWE-200 compliance)
+    res_verify = client.get("/api/keys/verify", headers={"Authorization": f"Bearer {data['api_key']}"})
     assert res_verify.status_code == 200
     assert res_verify.json()["status"] == "valid"
+
+def test_security_headers_and_rate_limit():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert "X-RateLimit-Limit" in response.headers
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-Frame-Options") == "DENY"
 
 def test_billing_webhook_order_created():
     webhook_payload = {
@@ -144,4 +151,5 @@ def test_billing_webhook_order_created():
     assert data["api_key"].startswith("qr_live_")
     assert data["tier"] == "enterprise"
     assert data["user_email"] == "founder@startup.io"
+
 
